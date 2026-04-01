@@ -1,95 +1,153 @@
-# usocket
+# Virtualization and Linux Network Setup with WireGuard
 
-Petit wrapper pédagogique autour de `socket.socket` pour simuler un réseau peu fiable.
-L’idée est simple: pour les sockets UDP, chaque envoi a une probabilité `fiabilite`
-de réussir. Si l’envoi est « perdu », la fonction renvoie quand même ce que
-l’application s’attend à voir (ex: `len(data)`), ce qui permet de tester la robustesse
-d’un protocole.
+## Overview
 
-En plus, les réceptions UDP (`recv`, `recvfrom`, `recv_into`, `recvfrom_into`)
-peuvent **corrompre** des données selon un taux configurable (`taux_corruption`).
+This project involves creating a virtualized network environment using two Linux machines. The objective is to configure network connectivity between them and establish a secure VPN tunnel using WireGuard. Additionally, network traffic analysis is performed using Wireshark to verify standard connectivity versus encrypted VPN traffic.
 
-## Fichiers fournis
+## Prerequisites
 
-- `usocket.pyc` : le module compilé (bytecode).
-- `usocket.pyi` : signatures pour l’autocomplétion (IntelliSense).
+- **Hypervisor:** Oracle VM VirtualBox, VMWare, Hyper-V, or similar.
+  - _Note:_ If your CPU does not support VT-x, use VirtualBox version 5.2 or earlier.
+- **Operating Systems:** Two Linux distributions (e.g., Ubuntu or Arch/EndeavourOS).
+- **Tools:**
+  - Wireshark (for packet capture)
+  - Text Editor (for configuration files)
+  - Video recording software (for demonstration)
 
-Vous recevrez une version de `usocket.pyc` par version Python (3.10, 3.11, 3.12).
-Prenez **celle qui correspond à votre Python et renommez-la usocket.pyc**.
+## Installation & Setup
 
-## Installation
+### 1. Virtual Machine Creation
 
-Placez `usocket.pyc` et `usocket.pyi` dans le même dossier que votre code (ou dans un
-répertoire présent dans `PYTHONPATH`).
+1.  Download the ISO images for your chosen Linux distributions.
+2.  Create **two** virtual machines using your hypervisor of choice.
+3.  Install the operating systems on both VMs.
 
-Si votre fichier `.pyc` a un nom versionné (ex: `usocket.311.pyc`), renommez-le
-en `usocket.pyc` pour que l’import fonctionne simplement.
+### 2. System Updates
 
-Ensuite, vous pouvez l’utiliser comme un module normal:
+Update the system packages via the command line interface.
 
-```python
-from usocket import usocket
+**For Arch Linux / EndeavourOS:**
+
+```bash
+yay -Syu
+pacman -S net-tools
 ```
 
-## Principe
+**For Ubuntu:**
 
-- `fiabilite = 1.0` : aucun paquet perdu.
-- `fiabilite = 0.7` : ~30% des envois UDP sont « perdus ».
-- `taux_corruption = 0.02` : ~2% des messages UDP reçus sont altérés.
-- La perte est simulée **côté envoi** pour UDP.
-- La corruption est simulée **côté réception** pour UDP.
-- `connect()` n’est pas rendu « peu fiable » : sur UDP, il sert surtout à fixer
-  l’adresse distante par défaut.
-
-## Exemple minimal (UDP)
-
-```python
-from socket import AF_INET, SOCK_DGRAM
-from usocket import usocket
-
-s = usocket(
-    family=AF_INET,
-    type=SOCK_DGRAM,
-    fiabilite=0.7,
-    taux_corruption=0.02,
-)
-
-message = b"bonjour"
-s.sendto(message, ("127.0.0.1", 9999))
+```bash
+sudo apt update
+sudo apt upgrade
 ```
 
-## Exemple avec UDP connecté
+### 3. Network Connectivity Verification
 
-```python
-from socket import AF_INET, SOCK_DGRAM
-from usocket import usocket
+1.  Identify the IP address of each machine:
+    ```bash
+    ifconfig
+    ```
+2.  Verify connectivity by pinging one machine from the other:
+    ```bash
+    ping <IP_ADDRESS_OF_OTHER_VM>
+    ```
 
-s = usocket(
-    family=AF_INET,
-    type=SOCK_DGRAM,
-    fiabilite=0.85,
-    taux_corruption=0.05,
-)
+## VPN Configuration (WireGuard)
 
-s.connect(("127.0.0.1", 9999))
-s.send(b"segment 1")
-reponse = s.recv(1024)
+Install and configure WireGuard on both machines to create a secure tunnel.
+
+### Installation
+
+**Ubuntu:**
+
+```bash
+sudo apt install wireguard-dkms
+sudo reboot -h now
 ```
 
-## Notes importantes
+**Arch Linux:**
+_(Ensure `net-tools` is installed as per step 2)_
 
-- Les méthodes UDP courantes redéfinies sont `send`, `sendto`, `sendall`, `recv`,
-  `recvfrom`, `recv_into` et `recvfrom_into`.
-- `send()` / `sendto()` renvoient `len(data)` même si l’envoi UDP est perdu.
-- `sendall()` renvoie toujours `None`. Si vous l’utilisez sur un socket UDP
-  connecté, une perte peut aussi être simulée.
-- `recv()` et `recvfrom()` peuvent altérer les données selon `taux_corruption`.
-- Le fichier `usocket.pyi` sert à afficher les bonnes signatures dans
-  l’autocomplétion. Le texte d’aide provient des docstrings compilées dans
-  `usocket.pyc`.
+### Configuration
 
-## Quand l’utiliser
+1.  Navigate to the configuration directory:
+    ```bash
+    cd /etc/wireguard
+    ```
+2.  Set secure permissions for key generation:
+    ```bash
+    sudo umask 077
+    ```
+3.  Generate keys and configure interfaces (follow standard WireGuard quickstart guides).
+4.  Save the configuration:
+    ```bash
+    sudo wg showconf wg0 > wg0.conf
+    ```
+5.  Restart the interface:
+    ```bash
+    sudo wg-quick down wg0
+    sudo wg-quick up wg0
+    ```
+    _Note: All commands must be executed as root (using `sudo` or `su`)._
 
-- Tester la logique de retransmission.
-- Vérifier les timeouts et la gestion d’erreurs.
-- Simuler un réseau instable sans infrastructure externe.
+### VPN Verification
+
+1.  Identify the IP address assigned to the `wg0` interface on both machines.
+2.  Ping the `wg0` IP address of the remote machine from the local machine.
+3.  Capture traffic using Wireshark during this ping test.
+
+## Documentation & Artifacts
+
+The following artifacts should be generated to document the setup and verification process:
+
+### 1. Screenshots
+
+Capture screenshots for the following steps:
+
+- Hypervisor selection and VM creation.
+- System update process.
+- Network connectivity checks (`ifconfig`, standard `ping`).
+- WireGuard installation and configuration.
+- Wireshark analysis.
+
+### 2. Video Demonstration
+
+- Record a video (max 5 minutes) demonstrating the VPN functionality.
+- Verify identity within the command line (e.g., display username/hostname) during the demo.
+
+### 3. Wireshark Captures
+
+Save `.pcapng` files for the following scenarios:
+
+- **Standard Traffic:** Ping between VMs without VPN.
+- **VPN Traffic:** Ping between VMs using the WireGuard interface (`wg0`).
+
+## Bonus Features (Optional)
+
+Deploy custom software developed in a previous module onto the virtual machines.
+
+1.  **Deployment:** Install the client on one VM and the server on the other.
+2.  **File Transfer:** Perform a file transfer between the two machines.
+3.  **Verification:**
+    - Record a video demonstration of the transfer.
+    - Capture Wireshark traffic during the file transfer.
+4.  **Advanced Bonus:** Perform the file transfer through the configured WireGuard VPN tunnel.
+
+## Repository Structure
+
+Recommended structure for storing project artifacts:
+
+```text
+.
+├── docs/
+│   ├── screenshots/
+│   ├── videos/
+│   │   ├── vpn_demo.mp4
+│   │   └── bonus_demo.mp4
+│   └── captures/
+│       ├── vm_ping.pcapng
+│       ├── wg_ping.pcapng
+│       └── bonus_transfer.pcapng
+├── scripts/
+│   └── (any automation scripts used)
+└── README.md
+```
